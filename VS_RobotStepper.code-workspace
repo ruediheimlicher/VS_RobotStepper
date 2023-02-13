@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../VS_RobotStepper"
+		},
+		{
+			"name": "VS_RobotStepper",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
