@@ -34,15 +34,15 @@
 #define MAX_TICKS 3400
 #define MIN_TICKS 1700
 
-#define MAX_DELAY 8000
+#define MAX_DELAY 4000
 #define MIN_DELAY 500
 
 #define MAX_STEPS 2000  // Anlaufen des Steppers
 #define MIN_STEPS 1000   // max speed Stepper
 
 uint16_t   steppermittearray[NUM_STEPPERS] = {}; // Werte fuer Mitte
-//uint16_t mitte0 = 1500;
-//uint16_t mitte1 = 1500;
+uint16_t mitte0 = 0;
+uint16_t mitte1 = 0;
 
 volatile uint16_t   stepsarray[NUM_STEPPERS] = {1500,1500}; // steps
 volatile uint8_t   dir_status = 0; // Richtung bit0: stepper0
@@ -65,7 +65,7 @@ volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15,13 };
 #define STEPPER1_EN   10
 #define STEPPER1_EN_BIT 3
 
-#define NULLBAND 40
+#define NULLBAND 100
 
 #define FIRSTRUN_BIT  7
 
@@ -73,8 +73,17 @@ uint16_t delay0 = 0; // Impulsdelay stepper 0
 uint16_t delay1 = 0;
 uint16_t delay0_raw = 0;
 uint16_t delay1_raw = 0;
-uint16_t steps0 = 1000;
-uint16_t steps1 = 1000;
+
+uint16_t delay0_map = 0;
+uint16_t delay1_map = 0;
+
+int16_t ausschlag0 = 0;
+int16_t ausschlag0_inv = 0;
+int16_t ausschlag0_map = 0;
+int16_t ausschlag1 = 0;
+
+uint16_t steps0 = 0;
+uint16_t steps1 = 0;
 
 uint8_t nullband = 0;
 
@@ -213,10 +222,13 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len)
  // lx
  
   // 
-  int16_t ausschlag0 = 0;
+  ausschlag0 = 0;
   delay0_raw = (canaldata.rx);
   //int16_t steps0 = ( delay0_raw - MITTE);
-  ausschlag0 = delay0_raw - steppermittearray[0];
+  delay0_map = map(delay0_raw, MIN_STEPS, MAX_STEPS, MIN_DELAY, MAX_DELAY);
+  ausschlag0 = abs(delay0_map - mitte0); // Vorzeichen 
+  ausschlag0_inv = (MAX_DELAY - MIN_DELAY)/2 -  abs(delay0_map - mitte0); // Vorzeichen 
+  ausschlag0_map = map(ausschlag0,0,MAX_DELAY - mitte0,MAX_DELAY,MIN_DELAY);
   if(abs(ausschlag0) < NULLBAND)
   {
     dir_status |= (1<<STEPPER0_EN_BIT);
@@ -225,24 +237,22 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len)
   {
     dir_status &= ~(1<<STEPPER0_EN_BIT);
   }
-
- steps0 = map(abs(delay0_raw - steppermittearray[0]),0,(MAX_STEPS-steppermittearray[0]),MAX_DELAY,MIN_DELAY);
-  
   
   //stepsarray[0] = steps0;
   //stepsarray[0] = canaldata.rx;
-  
-  if(delay0_raw < steppermittearray[0]) // ccw
+  int8_t richtungfaktor = 1;
+  if(delay0_map < mitte0) // ccw
   {
     dir_status &= ~(1<<STEPPER0_DIR_BIT);
     // steps0 = map((steppermittearray[0] + ausschlag0),0,(MAX_STEPS-steppermittearray[0]),MAX_DELAY,MIN_DELAY);
-
+    richtungfaktor = -1;
   }
   else 
   {
     dir_status |= (1<<STEPPER0_DIR_BIT);
   }
   
+  steps0 = ausschlag0_map;
   
   delay1_raw = canaldata.ry;
 
@@ -270,15 +280,23 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len)
     dir_status |= (1<<STEPPER1_DIR_BIT);
   }
 
+// Mitte bestimmen
 if ((dir_status & (1<<FIRSTRUN_BIT)) && (firstruncounter--))
   {
+
     steppermittearray[0] += delay0_raw;
+    mitte0 += delay0_map;
+    Serial.printf("delay0_raw: %d delay0_map: %d mitte0: %d\n",delay0_raw, delay0_map, mitte0);
+
     steppermittearray[1] += delay1_raw;
     if(firstruncounter == 0)
     {
       steppermittearray[0] /= 8;
+      Serial.printf("mitte0 summe: %d \t",mitte0);
+      mitte0 /= 8;
+      Serial.printf("mitte0 mittel: %d \n",mitte0);
       steppermittearray[1] /= 8;
-      Serial.printf("steppermittel 0: %d steppermittel 1: %d\n",steppermittearray[0],steppermittearray[1]);
+      Serial.printf("steppermittel 0: %d mitte0: %d \t steppermittel 1: %d\n",steppermittearray[0], mitte0,steppermittearray[1]);
       dir_status &= ~(1<<FIRSTRUN_BIT);
     }
   }
@@ -298,41 +316,6 @@ if (canaldata.digi & (1<<START_TON))
   }
   
 }
-}
-
-
-void setUpPinModes()
-{
-/*
-  for (uint8_t i = 0; i < stepperPins.size(); i++)
-  {
-    stepperPins[i].stepper.attach(stepperPins[i].stepperPin);
-    stepperPins[i].stepper.write(stepperPins[i].initialPosition);  
-    pinMode(stepperPins[stepperindex].stepperPin,OUTPUT) ;
-    digitalWrite(stepperPins[stepperindex].stepperPin,LOW);
-  }
- */
-}
-
-// https://www.esp8266.com/viewtopic.php?f=6&t=19867
-// https://www.visualmicro.com/page/Timer-Interrupts-Explained.aspx
-void IRAM_ATTR servoISR()
-{
-   interrupts++;
-  digitalWrite(stepperpinarray[stepperindex], LOW); // vorherigen Impuls beenden
-
-  if(stepperindex < (NUM_STEPPERS -1))
-  {
-    //  Serial.printf("+stepperindex: %d pin: %d stepperimpulsdauer: %d\n",stepperindex, stepperpinarray[stepperindex] ,stepperimpulsdauer);
-
-    //digitalWrite(stepperPins[stepperindex].stepperPin,LOW); // stop current impuls
-    stepperindex++;
-    stepperimpulsdauer = stepperimpulsarray[stepperindex];
-    digitalWrite(stepperpinarray[stepperindex], HIGH);
-    timer1_write(stepperimpulsdauer * TIMERFAKTOR); //mitte 1500, min 1050, max 1950
-
-  }
- 
 }
 
 void IRAM_ATTR stepperISR()
@@ -415,12 +398,11 @@ void setup()
     return;
   }
 
-  setUpPinModes();
   // Once ESPNow is successfully Init, we will register for recv CB to
   // get recv packer info
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(OnDataRecv);
-
+  mitte0 = 0;
 }
 
 void loop() 
@@ -446,9 +428,6 @@ if (delay1 == 0)
     }
   }
 
-
-
-
   if(tonmicros > 4)
   {
     //digitalWrite(4,!digitalRead(4));
@@ -467,7 +446,8 @@ if (delay1 == 0)
     deg1 += 18;
 
 
-    Serial.printf("delay0_raw: %d steps0: %d delay1_raw: %d steps1: %d dir_status: %2X\t",delay0_raw,steps0, delay1_raw, steps1, dir_status);
+    Serial.printf("mitte0: %d delay0_raw: %d  \t steps0: %d  \t delay0_map: %d  \t ausschlag0: %d  \t ausschlag0_map: %d\t delay1_raw: %d steps1: %d dir_status: %2X\t",mitte0, delay0_raw,steps0, delay0_map, ausschlag0, ausschlag0_map, delay1_raw, steps1, dir_status);
+    /*
     if(dir_status & (1<<STEPPER0_DIR_BIT))
     {
       Serial.printf(" dir0 = CW\t");
@@ -484,6 +464,7 @@ if (delay1 == 0)
     {
       Serial.printf(" dir1 = CCW\t");
     }
+    */
     Serial.printf("\n");
     ledmillis = 0;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
