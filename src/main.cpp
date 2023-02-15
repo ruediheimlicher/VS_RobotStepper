@@ -55,6 +55,8 @@ volatile uint8_t dir_status = 0;                           // Richtung bit0: ste
 
 volatile uint16_t stepperimpulsarray[NUM_STEPPERS] = {1500, 1500}; //
 
+uint16_t err1[16] = {};
+
 volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15, 13};
 
 #define MITTE 1500
@@ -235,17 +237,11 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
   average0pos++;
   average0pos &= 0x03;
   delay0_raw_array[average0pos] = (canaldata.rx);
-  uint16_t sum0 = 0;
-  for (uint8_t pos = 0; pos < AVERAGE; pos++)
-  {
-    sum0 += delay0_raw_array[pos];
-  }
+  
   delay0_raw = (canaldata.rx); // sum0/AVERAGE;
 
   delay0_map = map(delay0_raw, MIN_STEPS, MAX_STEPS, MIN_DELAY, MAX_DELAY);
-  // delay0_map = map(delay0_raw, mitte0_raw - STEPSREGION, mitte0_raw + STEPSREGION, MIN_DELAY, MAX_DELAY);
   ausschlag0 = abs(delay0_map - mitte0); // nur Betrag
-  // ausschlag0_map = map(ausschlag0,0,MAX_DELAY - mitte0,MAX_DELAY,MIN_DELAY);
 
   if (abs(ausschlag0) < NULLBAND)
   {
@@ -255,16 +251,18 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
   }
   else
   {
-    // steps0 = mitte0;
 
     dir_status &= ~(1 << STEPPER0_EN_BIT);
   }
+   if (ausschlag0 > MAX_DELAY - mitte0)
+  {
+    ausschlag0 = MAX_DELAY - mitte0;
+  }
+
   ausschlag0_map = map(ausschlag0, 0, MAX_DELAY - mitte0, MAX_DELAY, MIN_DELAY);
 
   steps0 = ausschlag0_map;
-  // stepsarray[0] = steps0;
-  // stepsarray[0] = canaldata.rx;
-
+  
   if (delay0_map < mitte0) // ccw
   {
     dir_status &= ~(1 << STEPPER0_DIR_BIT);
@@ -283,10 +281,19 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
   // Stepper 1
   ausschlag1 = 0;
   delay1_raw = canaldata.ry;
+  if (delay1_raw < MIN_STEPS)
+  {
+    delay1_raw = MIN_STEPS;
+  }
+  
   delay1_map = map(delay1_raw, MIN_STEPS, MAX_STEPS, MIN_DELAY, MAX_DELAY);
   // delay1_map = map(delay1_raw, mitte1_raw - STEPSREGION, mitte1_raw + STEPSREGION, MIN_DELAY, MAX_DELAY);
-
+  
   ausschlag1 = abs(delay1_map - mitte1); // nur Betrag
+  if (ausschlag1 > MAX_DELAY - mitte1)
+  {
+    ausschlag1 = MAX_DELAY - mitte1;
+  }
   ausschlag1_map = map(ausschlag1, 0, MAX_DELAY - mitte1, MAX_DELAY, MIN_DELAY);
 
   if (abs(ausschlag1) < NULLBAND)
@@ -299,9 +306,7 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
   {
     dir_status &= ~(1 << STEPPER1_EN_BIT);
   }
-  // stepsarray[1] = steps1;
-  // stepsarray[1] = canaldata.ry;
-
+  
   if (delay1_map < mitte1) // ccw
   {
     dir_status &= ~(1 << STEPPER1_DIR_BIT);
@@ -312,6 +317,13 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
   }
 
   steps1 = ausschlag1_map;
+  if(steps1 > 0x4000)
+  {
+    err1[0] = delay1_raw;
+    err1[1] = delay1_map;
+    err1[2] = ausschlag1;
+    err1[3] = ausschlag1_map;
+  }
   if (steps1 < MIN_DELAY)
   {
     steps1 = MIN_DELAY;
@@ -440,6 +452,9 @@ void setup()
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(OnDataRecv);
   mitte0 = 0;
+  err1[0] = 0;
+  err1[1] = 0;
+
 }
 
 void loop()
@@ -472,35 +487,21 @@ void loop()
 
   if (ledmillis >= ledintervall)
   {
-
     // int  faktor0 = int(6400 +6000 * (sin(deg0*PI/180)));
     // stepsarray[0] = faktor0;
-    deg0 += 16;
+    //deg0 += 16;
 
     // int  faktor1 = int(6400 +6000 * (sin(deg1*PI/180)));
     // stepsarray[1] = faktor1;
-    deg1 += 18;
+    //deg1 += 18;
 
-    Serial.printf("mitte0: %d del0_raw: %d   steps0: %d   del0_map: %d   a0: %d  \t a0_map: %d\t m1: %d del1_raw: %d steps1: %d del1_map: %d dir_status: %2X\t", mitte0, delay0_raw, steps0, delay0_map, ausschlag0, ausschlag0_map, mitte1, delay1_raw, steps1, delay1_map, dir_status);
-    /*
-    if(dir_status & (1<<STEPPER0_DIR_BIT))
+    //Serial.printf("m0: %d del0_raw: %d   steps0: %d   del0_map: %d   a0: %d  a0_map: %d\t m1: %d del1_raw: %d steps1: %d del1_map: %d a1: %d a1_map: %d dir_status: %2X\t", mitte0, delay0_raw, steps0, delay0_map, ausschlag0, ausschlag0_map, mitte1, delay1_raw, steps1, delay1_map, ausschlag1, ausschlag1_map, dir_status);
+    //Serial.printf("\n");
+
+    if(err1[0]> 0)
     {
-      Serial.printf(" dir0 = CW\t");
+       Serial.printf("err1: %d %d %d %d\n",err1[0], err1[1],err1[2], err1[3]);
     }
-    else
-    {
-      Serial.printf(" dir0 = CCW\t");
-    }
-    if(dir_status & (1<<STEPPER1_DIR_BIT))
-    {
-      Serial.printf(" dir1 = CW\t");
-    }
-    else
-    {
-      Serial.printf(" dir1 = CCW\t");
-    }
-    */
-    Serial.printf("\n");
     ledmillis = 0;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     ubatt = analogRead(A0);
