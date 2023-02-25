@@ -10,6 +10,8 @@
   copies or substantial portions of the Software.
 *********/
 
+// MAC: 48:3f:da:a4:36:57 MINI D1
+
 #include <ESP8266WiFi.h>
 #include <espnow.h>
 #include <Servo.h>
@@ -335,7 +337,7 @@ void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len)
     steppermittearray[0] += delay0_raw;
     mitte0 += delay0_map;
 
-    Serial.printf("delay0_raw: %d delay0_map: %d mitte0: %d\n", delay0_raw, delay0_map, mitte0);
+   // Serial.printf("delay0_raw: %d delay0_map: %d mitte0: %d\n", delay0_raw, delay0_map, mitte0);
 
     mitte1_raw += delay1_raw;
     steppermittearray[1] += delay1_raw;
