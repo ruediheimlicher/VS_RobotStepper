@@ -64,19 +64,22 @@ volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15, 13};
 #define MITTE 1500
 
 #define MITTE 1500
+
+
 #define STEPPER0_DIR 15
-#define STEPPER0_DIR_BIT 0
 #define STEPPER0_STEP 13
 #define STEPPER0_EN 9
+
+#define STEPPER0_DIR_BIT 0
 #define STEPPER0_EN_BIT 1
 
 #define STEPPER1_DIR 12
-#define STEPPER1_DIR_BIT 2
 #define STEPPER1_STEP 14
 #define STEPPER1_EN 10
+
+
+#define STEPPER1_DIR_BIT 2
 #define STEPPER1_EN_BIT 3
-
-
 
 #define NULLBAND 100
 
