@@ -18,7 +18,7 @@
 
 #include <Ticker.h>
 #include "elapsedMillis.h"
-// #include "expo.h"
+ #include "expo.h"
 
 // von ESP32 ROBOTAUTO
 #ifndef LED_BUILTIN
@@ -65,17 +65,34 @@ volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15, 13};
 
 #define MITTE 1500
 
-
+/*
+// bread
 #define STEPPER0_DIR 15
 #define STEPPER0_STEP 13
 #define STEPPER0_EN 9
 
-#define STEPPER0_DIR_BIT 0
-#define STEPPER0_EN_BIT 1
-
 #define STEPPER1_DIR 12
 #define STEPPER1_STEP 14
 #define STEPPER1_EN 10
+
+*/
+// Print
+// A
+#define STEPPER0_DIR 9
+#define STEPPER0_STEP 15
+#define STEPPER0_EN 10
+
+// B
+#define STEPPER1_DIR 12
+#define STEPPER1_STEP 14
+#define STEPPER1_EN 13
+
+
+
+
+
+#define STEPPER0_DIR_BIT 0
+#define STEPPER0_EN_BIT 1
 
 
 #define STEPPER1_DIR_BIT 2
@@ -121,7 +138,7 @@ void playTon(int ton);
 #define START_TON 3
 #define LICHT_ON 2
 
-#define TON_PIN 5
+#define TON_PIN 2
 elapsedMillis tonposition;
 
 uint16_t ubatt = 0;
@@ -155,21 +172,7 @@ volatile uint16_t stepperzeitsumme = 0; // cumulate stepperimpulses
 #define TIMERFAKTOR 5                              // Umrechnung Impulszeit
 volatile uint16_t paketintervall = PAKETINTERVALL; // 20 ms
 volatile int interrupts;
-std::vector<ServoPins> stepperPins =
-    {
-        {Servo(), 12, "Dir", 90},   // Richtung
-        {Servo(), 14, "Pitch", 90}, // Gas
-        {Servo(), 13, "Elbow", 90},
-        {Servo(), 15, "Gripper", 90},
-};
 
-struct RecordedStep
-{
-  int stepperIndex;
-  int value;
-  int delayInStep;
-};
-std::vector<RecordedStep> recordedSteps;
 
 bool recordSteps = false;
 bool playRecordedSteps = false;
