@@ -14,16 +14,15 @@
 
 #include <ESP8266WiFi.h>
 #include <espnow.h>
-#include <Servo.h>
+//#include <Servo.h>
 
-#include <Ticker.h>
+//#include <Ticker.h>
 #include "elapsedMillis.h"
- #include "expo.h"
+#include "expo.h"
 
-// von ESP32 ROBOTAUTO
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 16
-#endif
+
+
+
 
 #define batt A0
 
@@ -59,7 +58,6 @@ volatile uint16_t stepperimpulsarray[NUM_STEPPERS] = {1500, 1500}; //
 
 uint16_t err1[16] = {};
 
-volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15, 13};
 
 #define MITTE 1500
 
@@ -100,7 +98,9 @@ volatile uint8_t stepperpinarray[NUM_STEPPERS] = {15, 13};
 
 #define NULLBAND 100
 
-#define FIRSTRUN_BIT 7
+
+
+
 #define AVERAGE 4
 uint16_t delay0 = 0; // Impulsdelay stepper 0
 uint16_t delay1 = 0;
@@ -130,15 +130,29 @@ uint16_t stepperwertbereich = 0;
 
 uint8_t firstruncounter = 8;
 
+uint8_t loopstatus = 0;
+
+#define TON_ON          0
+#define TON_OFF          1
+
+#define FIRSTRUN_BIT    7
+
 uint16_t maxwinkel = 180;
 
 uint8_t buttonstatus = 0;
 uint8_t tonindex = 0;
+
+uint8_t starttonindex = 0;
 void playTon(int ton);
 #define START_TON 3
 #define LICHT_ON 2
 
-#define TON_PIN 2
+#define TON_PIN 0
+
+uint16_t tonperiode = 0; // 10 khz
+int8_t ton_on = 0;
+uint16_t signalton = 22;
+
 elapsedMillis tonposition;
 
 uint16_t ubatt = 0;
@@ -149,19 +163,16 @@ int deg0 = 0;
 int deg1 = 0;
 
 long unsigned int ledintervall = 1000;
-Ticker timer;
 elapsedMillis ledmillis;
 elapsedMillis tonmillis;
+elapsedMillis pausemillis;
 elapsedMicros tonmicros;
 int tonfolge[3] = {554, 329, 440};
+int periodenfolge[3] = {75, 127, 95};
+int startmelodieD[4] = {107, 85, 70,53};
+int startperiodenfolge[4] = {107, 85, 70,53};
 
-struct ServoPins
-{
-  Servo stepper;
-  int stepperPin;
-  String stepperName;
-  int initialPosition;
-};
+
 
 volatile uint8_t stepperindex = 0;
 volatile uint16_t stepperimpulsdauer = 0;
@@ -190,6 +201,12 @@ void playTon(uint8_t ton)
   // a: 440
   tone(TON_PIN, tonfolge[ton], 800);
   // tone(TON_PIN,440,800);
+}
+
+void playStartmelodie(uint8_t ton)
+{
+ 
+  tone(TON_PIN, startmelodieD[ton], 800);
 }
 
 // Structure example to receive data
@@ -406,6 +423,22 @@ void IRAM_ATTR stepperISR()
     }
     delay1--;
   }
+
+  
+  if(tonperiode)
+    {
+      tonperiode--;
+    }
+    if(tonperiode == 0)
+    {
+      ton_on ^= (1<<0);
+      tonperiode = signalton;
+      //if (buttonstatus & (1 << START_TON))
+      if (loopstatus & (1<<TON_ON))
+      {
+        digitalWrite(TON_PIN, ton_on);
+      }
+    }
 }
 
 void setup()
@@ -466,12 +499,75 @@ void setup()
   mitte0 = 0;
   err1[0] = 0;
   err1[1] = 0;
-
+//playStartmelodie(0);
+loopstatus |= (1<<FIRSTRUN_BIT);
+ tonmillis = 0;
+//tone(TON_PIN, 440, 800);
 }
 
 void loop()
 {
 
+// Startmelodie
+  
+  if(loopstatus & (1<<FIRSTRUN_BIT))
+  {
+   
+    //Serial.printf("firstrun start\n");
+    if (tonindex == 0) // vorgang beginnt
+    {
+      //Serial.printf("************ FIRSTRUN_BIT start index: %d signalton: %d\n", tonindex, signalton);
+
+      tonmillis = 0;
+      //Serial.print("************ TON start index: ");
+      //Serial.print(tonindex);
+      signalton = startperiodenfolge[tonindex];
+      tonperiode = signalton;
+      loopstatus |= (1<<TON_ON);
+      //Serial.printf("************ TON start index: %d signalton: %d\n", tonindex, signalton);
+      tonindex++;
+    }
+    if(tonindex) // vorgang im Gang
+    {
+      if (tonmillis > 300) // lang genug
+      {
+          
+        loopstatus &= ~(1<<TON_ON); // ton off
+        pausemillis = 0; // Beginn pause
+          //Serial.print("************ TON next index: ");
+          //Serial.println(tonindex);
+        if(tonmillis > 350) // next ton
+        {
+          
+          if (tonindex == 4) // end
+          {
+            buttonstatus &= ~(1<<START_TON);
+            loopstatus &= ~(1<<TON_ON);
+            loopstatus &= ~(1<<FIRSTRUN_BIT);
+            tonindex = 0;
+          }
+          else
+          {
+            signalton = startperiodenfolge[tonindex];
+            loopstatus |= (1<<TON_ON); // Ton ON
+            //Serial.printf("************ TON next index: %d signalton: %d\n", tonindex, signalton);
+            tonmillis = 0; 
+            tonindex++;
+          }
+        
+        } // tonmillis > 850
+      } // tonmillis > 800
+
+      
+
+
+    } // if tonindex
+    //Serial.printf("firstrun end\n");
+  } // end FIRSTRUN
+  
+  // end Startmelodie
+  else
+  {
   if (delay0 == 0)
   {
     {
@@ -490,13 +586,14 @@ void loop()
       delay1 = steps1; // stepsarray[1];
     }
   }
-
+}
   if (tonmicros > 4)
   {
     // digitalWrite(4,!digitalRead(4));
     tonmicros = 0;
   }
 
+  
   if (ledmillis >= ledintervall)
   {
     // int  faktor0 = int(6400 +6000 * (sin(deg0*PI/180)));
@@ -519,17 +616,7 @@ void loop()
     ubatt = analogRead(A0);
     outdata.x = ubatt;
     //
-    /*
-    // Test ohne Transmitter
-   stepperindex = 0;
-   paketintervall = PAKETINTERVALL;
-   stepperimpulsdauer = stepperimpulsarray[stepperindex];
-   //Serial.printf("*stepperindex: %d pin: %d stepperimpulsdauer: %d\n",stepperindex, stepperpinarray[stepperindex] ,stepperimpulsdauer);
-
-   paketintervall -= stepperimpulsdauer; //
-   digitalWrite(stepperpinarray[stepperindex], HIGH);
-   timer1_write(stepperimpulsdauer * TIMERFAKTOR);
-   */
+    
     //
 
     //  Serial.println("led");
@@ -537,34 +624,70 @@ void loop()
 
   if (buttonstatus & (1 << START_TON))
   {
-
-    if (tonindex == 0)
+    if (tonindex == 0) // vorgang beginnt
     {
       tonmillis = 0;
       Serial.print("************ TON start index: ");
-      Serial.println(tonindex);
-      playTon(tonindex);
+      //Serial.print(tonindex);
+      signalton = periodenfolge[tonindex];
+      loopstatus |= (1<<TON_ON);
+      //Serial.printf("************ TON start index: %d signalton: %d\n", tonindex, signalton);
       tonindex++;
     }
+    if(tonindex) // vorgang im Gang
+    {
+      if (tonmillis > 800) // lang genug
+      {
+          
+        loopstatus &= ~(1<<TON_ON); // ton off
+        pausemillis = 0; // Beginn pause
+          //Serial.print("************ TON next index: ");
+          //Serial.println(tonindex);
+        if(tonmillis > 850) // next ton
+        {
+          
+          if (tonindex == 3) // end
+          {
+            buttonstatus &= ~(1<<START_TON);
+            loopstatus &= ~(1<<TON_ON);
+            tonindex = 0;
+          }
+          else
+          {
+            signalton = periodenfolge[tonindex];
+            loopstatus |= (1<<TON_ON); // Ton ON
+            //Serial.printf("************ TON next index: %d signalton: %d\n", tonindex, signalton);
+            tonmillis = 0; 
+            tonindex++;
+          }
+        
+        } // tonmillis > 850
+      } // tonmillis > 800
 
+      
+
+
+    } // if tonindex
+    /*
     if (tonindex < 3)
     {
       if (tonmillis > 850)
       {
-        Serial.print("************ TON next index: ");
-        Serial.println(tonindex);
-        playTon(tonindex);
+        //Serial.print("************ TON next index: ");
+        //Serial.println(tonindex);
+        signalton = periodenfolge[tonindex];
+        Serial.printf("************ TON next index: %d signalton: %d\n", tonindex, signalton);
+        //playTon(tonindex);
         tonindex++;
-
-        tonmillis = 0;
+        tonmillis = 0; 
       }
     }
-    else
+    else if (tonindex >= 4)
     {
       Serial.println("************ TON END");
       buttonstatus &= ~(1 << START_TON);
       tonindex = 0;
-      // timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
     }
+    */
   }
 }
